@@ -5,11 +5,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import androidx.core.content.ContextCompat
 import dev.chaingenhash.firefly.domain.BatteryState
 import dev.chaingenhash.firefly.domain.batteryStateFrom
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+
+/**
+ * Reads the current battery state synchronously from the sticky broadcast, without
+ * registering a receiver. Used where a level is needed before the flow has emitted.
+ */
+fun currentBatteryState(context: Context): BatteryState? =
+    context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        ?.readBatteryState()
 
 /** Emits the current battery reading, then every change, for as long as it is collected. */
 fun batteryStateFlow(context: Context): Flow<BatteryState> = callbackFlow {
@@ -22,8 +31,8 @@ fun batteryStateFlow(context: Context): Flow<BatteryState> = callbackFlow {
     }
 
     // The battery broadcast is sticky, so this returns the current reading immediately.
-    context.registerReceiver(null, filter)?.readBatteryState()?.let { trySend(it) }
-    context.registerReceiver(receiver, filter)
+    currentBatteryState(context)?.let { trySend(it) }
+    ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 
     awaitClose { context.unregisterReceiver(receiver) }
 }

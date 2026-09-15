@@ -48,14 +48,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     enabled = true,
                     label = label?.takeIf { it.isNotBlank() },
                 ),
-                currentLevel = battery.value?.level ?: level,
+                currentLevel = battery.value?.level
+                    ?: currentBatteryState(getApplication())?.level
+                    ?: level,
             )
         }
     }
 
     fun setEnabled(id: String, enabled: Boolean) {
         viewModelScope.launch {
-            repository.setEnabled(id, enabled, battery.value?.level ?: 0)
+            repository.setEnabled(
+                id,
+                enabled,
+                battery.value?.level ?: currentBatteryState(getApplication())?.level ?: 0,
+            )
         }
     }
 
