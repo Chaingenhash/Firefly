@@ -14,6 +14,22 @@ example "tell me at 80% so I can unplug" or "warn me at 20%".
 - Android 12 (API 31) or newer.
 - JDK 17 and the Android SDK to build. Set `sdk.dir` in `local.properties`.
 
+## Xiaomi, Redmi and POCO: enable Autostart
+
+On MIUI and HyperOS, `BOOT_COMPLETED` is withheld from apps that do not hold the
+vendor's Autostart permission. Nothing an app can do grants it, and there is no error
+when it is missing — monitoring simply does not come back after a reboot.
+
+If you are on one of these devices, enable it once:
+
+**Security app → Permissions → Autostart → Firefly**, or
+**Settings → Apps → Manage apps → Firefly → Autostart**.
+
+Verified on a Xiaomi running Android 16: with Autostart off the receiver never ran after
+a reboot; with it on, monitoring resumed roughly twenty seconds after boot without the
+app being opened. Other aggressive power managers (Samsung, Huawei, OnePlus) have
+similar settings under names like "Auto-launch" or "Allow background activity".
+
 ## Build and install
 
     ./gradlew :app:installDebug
