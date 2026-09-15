@@ -32,10 +32,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +45,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,23 +79,33 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (granted) viewModel.setMonitoring(true)
     }
 
-    val currentMonitoring = rememberUpdatedState(monitoring)
-
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 notificationsGranted = NotificationManagerCompat.from(context)
                     .areNotificationsEnabled()
-
-                // The service can die without stopService — a battery killer, a
-                // force-stop, a restore onto a new device. onStartCommand is idempotent,
-                // so re-starting it here is a no-op when it is already alive.
-                if (currentMonitoring.value) BatteryMonitorService.start(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The service can die without stopService — an OEM battery killer, a force-stop, a
+    // restore onto a new device — leaving the switch reading on with nothing monitoring.
+    //
+    // This keys on `monitoring` rather than sampling it inside the ON_RESUME observer
+    // above: a dead service usually means a dead process, so the next launch is a cold
+    // start, and at that first ON_RESUME `monitoring` is still the `stateIn` seed with
+    // the DataStore read outstanding. Re-running when the real value arrives is what
+    // makes the reconciliation work in the case it exists for. `onStartCommand` is
+    // idempotent, so starting an already-live service is a no-op.
+    LaunchedEffect(lifecycleOwner, monitoring) {
+        if (monitoring) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                BatteryMonitorService.start(context)
+            }
+        }
     }
 
     Scaffold(

@@ -19,9 +19,17 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 private val KEY_THRESHOLDS = stringPreferencesKey("thresholds")
 private val KEY_MONITOR_STATE = stringPreferencesKey("monitor_state")
 
-class ThresholdRepository(context: Context) {
+/**
+ * Stores thresholds and monitor state.
+ *
+ * The [store] is a constructor parameter rather than a property delegate so the
+ * transactional logic below can be exercised by a plain JVM test over a temp file.
+ * Production code uses the [Context] constructor, which resolves the single
+ * app-scoped store.
+ */
+class ThresholdRepository(private val store: DataStore<Preferences>) {
 
-    private val store = context.applicationContext.dataStore
+    constructor(context: Context) : this(context.applicationContext.dataStore)
 
     val thresholds: Flow<List<Threshold>> =
         store.data.map { ThresholdCodec.decodeThresholds(it[KEY_THRESHOLDS]) }
@@ -69,10 +77,6 @@ class ThresholdRepository(context: Context) {
         upsert(threshold.copy(enabled = enabled), currentLevel)
     }
 
-    suspend fun saveMonitorState(state: MonitorState) {
-        store.edit { it[KEY_MONITOR_STATE] = ThresholdCodec.encodeMonitorState(state) }
-    }
-
     /**
      * Evaluates [current] against the stored thresholds and arm state inside one
      * transaction, persists the resulting state, and returns the thresholds that fired.
@@ -81,14 +85,21 @@ class ThresholdRepository(context: Context) {
      * concurrent UI write from being clobbered: without it, an evaluation that began
      * before the user switched monitoring off would write `monitoringEnabled = true`
      * back over their change.
+     *
+     * Returns nothing while monitoring is off. The service unregisters its receiver in
+     * `onDestroy`, so a broadcast can still arrive just after the user switches
+     * monitoring off; without this guard that broadcast would write `lastLevel` back
+     * over the nulls [setMonitoringEnabled] just wrote, and re-enabling later could
+     * alert for a crossing that happened while monitoring was off.
      */
     suspend fun evaluateAndCommit(current: BatteryState): List<Threshold> {
         var fired: List<Threshold> = emptyList()
 
         store.edit { prefs ->
-            val thresholds = ThresholdCodec.decodeThresholds(prefs[KEY_THRESHOLDS])
             val state = ThresholdCodec.decodeMonitorState(prefs[KEY_MONITOR_STATE])
+            if (!state.monitoringEnabled) return@edit
 
+            val thresholds = ThresholdCodec.decodeThresholds(prefs[KEY_THRESHOLDS])
             val evaluation = ThresholdEvaluator.evaluate(state, current, thresholds)
             fired = evaluation.fired
 
