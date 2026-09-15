@@ -12,7 +12,9 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -46,8 +48,9 @@ fun BatteryGauge(
             .semantics { contentDescription = description },
     ) {
         Canvas(Modifier.fillMaxWidth().height(34.dp)) {
-            val capWidth = size.width * 0.022f
-            val bodyWidth = size.width - capWidth - 4.dp.toPx()
+            val capWidth = 7.dp.toPx()
+            val capGap = 2.dp.toPx()
+            val bodyWidth = size.width - capWidth - capGap
             val radius = CornerRadius(size.height / 2.6f, size.height / 2.6f)
             val inset = 3.dp.toPx()
 
@@ -64,17 +67,20 @@ fun BatteryGauge(
                 style = Stroke(width = 1.5.dp.toPx()),
             )
 
-            // Terminal cap
+            // Terminal cap, sitting just off the body like a real battery contact.
             drawRoundRect(
                 color = outline,
-                topLeft = Offset(bodyWidth + 4.dp.toPx(), size.height * 0.3f),
+                topLeft = Offset(bodyWidth + capGap, size.height * 0.3f),
                 size = Size(capWidth, size.height * 0.4f),
                 cornerRadius = CornerRadius(capWidth / 2, capWidth / 2),
             )
 
-            // Fill
             val fillWidth = (bodyWidth - inset * 2) * fraction
-            if (fillWidth > 0f) {
+            if (fillWidth <= 0f) return@Canvas
+
+            // Everything below is clipped to the body, so the glow can spill forward
+            // into the empty track without escaping the battery outline.
+            clipRect(right = bodyWidth) {
                 drawRoundRect(
                     color = accent,
                     topLeft = Offset(inset, inset),
@@ -83,14 +89,19 @@ fun BatteryGauge(
                 )
 
                 // The glow at the charge edge — the firefly sitting on the fill line.
+                // A radial gradient rather than stacked translucent circles: those read
+                // as a muddy blob where they overlap the fill they sit on.
                 val edge = inset + fillWidth
-                listOf(14f to 0.20f, 9f to 0.30f, 4.5f to 0.85f).forEach { (r: Float, alpha: Float) ->
-                    drawCircle(
-                        color = accent.copy(alpha = alpha),
-                        radius = r.dp.toPx() / 2,
+                val glowRadius = size.height * 0.75f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(accent.copy(alpha = 0.55f), Color.Transparent),
                         center = Offset(edge, size.height / 2),
-                    )
-                }
+                        radius = glowRadius,
+                    ),
+                    radius = glowRadius,
+                    center = Offset(edge, size.height / 2),
+                )
             }
         }
     }

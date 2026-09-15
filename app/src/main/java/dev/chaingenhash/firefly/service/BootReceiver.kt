@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import dev.chaingenhash.firefly.data.SettingsRepository
 import dev.chaingenhash.firefly.data.ThresholdRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,8 @@ class BootReceiver : BroadcastReceiver() {
                 // can make this read slow, and missing the window is better than being
                 // killed mid-read.
                 val enabled = withTimeoutOrNull(5_000) {
-                    ThresholdRepository(appContext).monitorState.first().monitoringEnabled
+                    ThresholdRepository(appContext).monitorState.first().monitoringEnabled &&
+                        SettingsRepository(appContext).settings.first().resumeOnBoot
                 }
 
                 when {

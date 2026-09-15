@@ -3,9 +3,12 @@ package dev.chaingenhash.firefly.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.chaingenhash.firefly.data.SettingsRepository
 import dev.chaingenhash.firefly.data.ThresholdRepository
+import dev.chaingenhash.firefly.domain.AppSettings
 import dev.chaingenhash.firefly.domain.BatteryState
 import dev.chaingenhash.firefly.domain.Direction
+import dev.chaingenhash.firefly.domain.ThemeChoice
 import dev.chaingenhash.firefly.domain.Threshold
 import dev.chaingenhash.firefly.service.BatteryMonitorService
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,6 +21,7 @@ import java.util.UUID
 class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repository = ThresholdRepository(app)
+    private val settingsRepository = SettingsRepository(app)
 
     val battery: StateFlow<BatteryState?> = batteryStateFlow(app)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -25,6 +29,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val thresholds: StateFlow<List<Threshold>> = repository.thresholds
         .map { list -> list.sortedWith(compareBy({ it.direction }, { -it.level })) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val settings: StateFlow<AppSettings> = settingsRepository.settings
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
+    fun setTheme(theme: ThemeChoice) {
+        viewModelScope.launch { settingsRepository.setTheme(theme) }
+    }
+
+    fun setResumeOnBoot(resume: Boolean) {
+        viewModelScope.launch { settingsRepository.setResumeOnBoot(resume) }
+    }
 
     val monitoring: StateFlow<Boolean> = repository.monitorState
         .map { it.monitoringEnabled }

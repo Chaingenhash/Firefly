@@ -5,7 +5,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import dev.chaingenhash.firefly.domain.ThemeChoice
 
 /**
  * Firefly's palette: deep night surfaces with a warm lime-amber accent — the colour a
@@ -74,15 +77,25 @@ private val FireflyLight = lightColorScheme(
  * scheme because it is a graphic colour, not a semantic role.
  */
 val glowAccent: Color
-    @Composable get() = if (isSystemInDarkTheme()) GlowDark else Color(0xFF7A9A1F)
+    @Composable get() = if (LocalDarkTheme.current) GlowDark else Color(0xFF7A9A1F)
+
+/** Whether the Firefly palette is currently rendering dark, honouring an explicit choice. */
+val LocalDarkTheme = staticCompositionLocalOf { false }
 
 @Composable
 fun FireflyTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    theme: ThemeChoice = ThemeChoice.SYSTEM,
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) FireflyDark else FireflyLight,
-        content = content,
-    )
+    val darkTheme = when (theme) {
+        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
+        ThemeChoice.LIGHT -> false
+        ThemeChoice.DARK -> true
+    }
+    CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) FireflyDark else FireflyLight,
+            content = content,
+        )
+    }
 }

@@ -5,7 +5,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import dev.chaingenhash.firefly.domain.BatteryState
 import dev.chaingenhash.firefly.domain.MonitorState
 import dev.chaingenhash.firefly.domain.Threshold
@@ -13,8 +12,6 @@ import dev.chaingenhash.firefly.domain.ThresholdEvaluator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "firefly")
 
 private val KEY_THRESHOLDS = stringPreferencesKey("thresholds")
 private val KEY_MONITOR_STATE = stringPreferencesKey("monitor_state")
@@ -29,7 +26,7 @@ private val KEY_MONITOR_STATE = stringPreferencesKey("monitor_state")
  */
 class ThresholdRepository(private val store: DataStore<Preferences>) {
 
-    constructor(context: Context) : this(context.applicationContext.dataStore)
+    constructor(context: Context) : this(context.applicationContext.fireflyDataStore)
 
     val thresholds: Flow<List<Threshold>> =
         store.data.map { ThresholdCodec.decodeThresholds(it[KEY_THRESHOLDS]) }
