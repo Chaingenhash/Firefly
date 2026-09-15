@@ -24,13 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.chaingenhash.firefly.domain.Direction
 import dev.chaingenhash.firefly.domain.Threshold
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThresholdEditorSheet(
     existing: Threshold?,
     onDismiss: () -> Unit,
-    onSave: (id: String?, level: Int, direction: Direction, label: String?) -> Unit,
+    onSave: (id: String?, level: Int, direction: Direction, label: String?, enabled: Boolean) -> Unit,
 ) {
     var level by remember { mutableIntStateOf(existing?.level ?: 80) }
     var direction by remember { mutableStateOf(existing?.direction ?: Direction.CHARGING_UP) }
@@ -41,7 +42,7 @@ fun ThresholdEditorSheet(
             Text("Alert at $level%")
             Slider(
                 value = level.toFloat(),
-                onValueChange = { level = it.toInt() },
+                onValueChange = { level = it.roundToInt() },
                 valueRange = 1f..100f,
                 steps = 98,
             )
@@ -76,7 +77,7 @@ fun ThresholdEditorSheet(
 
             Button(
                 onClick = {
-                    onSave(existing?.id, level, direction, label)
+                    onSave(existing?.id, level, direction, label, existing?.enabled ?: true)
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),

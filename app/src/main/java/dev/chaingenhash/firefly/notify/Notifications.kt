@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.chaingenhash.firefly.R
@@ -14,6 +15,8 @@ import dev.chaingenhash.firefly.domain.BatteryState
 import dev.chaingenhash.firefly.domain.Direction
 import dev.chaingenhash.firefly.domain.Threshold
 import dev.chaingenhash.firefly.ui.MainActivity
+
+private const val TAG = "Firefly"
 
 /** Title of the alert for [threshold] at [level]. Pure, so it is unit-tested directly. */
 fun alertTitle(threshold: Threshold, level: Int): String =
@@ -85,7 +88,10 @@ object Notifications {
     @SuppressLint("MissingPermission")   // guarded by areNotificationsEnabled() below
     fun alert(context: Context, threshold: Threshold, level: Int) {
         val manager = NotificationManagerCompat.from(context)
-        if (!manager.areNotificationsEnabled()) return
+        if (!manager.areNotificationsEnabled()) {
+            Log.w(TAG, "Notifications disabled; dropping alert for threshold ${threshold.id}")
+            return
+        }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ALERTS)
             .setSmallIcon(R.drawable.ic_battery)

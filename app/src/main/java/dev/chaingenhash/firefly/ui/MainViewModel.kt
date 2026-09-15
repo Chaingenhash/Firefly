@@ -38,14 +38,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun save(id: String?, level: Int, direction: Direction, label: String?) {
+    fun save(id: String?, level: Int, direction: Direction, label: String?, enabled: Boolean) {
         viewModelScope.launch {
             repository.upsert(
                 Threshold(
                     id = id ?: UUID.randomUUID().toString(),
                     level = level,
                     direction = direction,
-                    enabled = true,
+                    enabled = enabled,
                     label = label?.takeIf { it.isNotBlank() },
                 ),
                 currentLevel = battery.value?.level

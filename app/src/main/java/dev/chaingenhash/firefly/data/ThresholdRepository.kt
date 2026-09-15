@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.chaingenhash.firefly.domain.BatteryState
 import dev.chaingenhash.firefly.domain.MonitorState
 import dev.chaingenhash.firefly.domain.Threshold
 import dev.chaingenhash.firefly.domain.ThresholdEvaluator
@@ -72,12 +73,47 @@ class ThresholdRepository(context: Context) {
         store.edit { it[KEY_MONITOR_STATE] = ThresholdCodec.encodeMonitorState(state) }
     }
 
+    /**
+     * Evaluates [current] against the stored thresholds and arm state inside one
+     * transaction, persists the resulting state, and returns the thresholds that fired.
+     *
+     * Reading, evaluating and writing in a single [DataStore.edit] is what stops a
+     * concurrent UI write from being clobbered: without it, an evaluation that began
+     * before the user switched monitoring off would write `monitoringEnabled = true`
+     * back over their change.
+     */
+    suspend fun evaluateAndCommit(current: BatteryState): List<Threshold> {
+        var fired: List<Threshold> = emptyList()
+
+        store.edit { prefs ->
+            val thresholds = ThresholdCodec.decodeThresholds(prefs[KEY_THRESHOLDS])
+            val state = ThresholdCodec.decodeMonitorState(prefs[KEY_MONITOR_STATE])
+
+            val evaluation = ThresholdEvaluator.evaluate(state, current, thresholds)
+            fired = evaluation.fired
+
+            // ACTION_BATTERY_CHANGED also fires on temperature and voltage changes, far
+            // more often than the level moves. Skipping the unchanged write keeps this
+            // from rewriting the preferences file many times a minute.
+            if (evaluation.state != state) {
+                prefs[KEY_MONITOR_STATE] = ThresholdCodec.encodeMonitorState(evaluation.state)
+            }
+        }
+
+        return fired
+    }
+
     suspend fun setMonitoringEnabled(enabled: Boolean) {
         store.edit { prefs ->
             val state = ThresholdCodec.decodeMonitorState(prefs[KEY_MONITOR_STATE])
-            prefs[KEY_MONITOR_STATE] = ThresholdCodec.encodeMonitorState(
-                state.copy(monitoringEnabled = enabled),
-            )
+            val cleared = if (enabled) {
+                state.copy(monitoringEnabled = true)
+            } else {
+                // Forget the last reading, so switching monitoring back on is a cold
+                // start and cannot alert for a crossing that happened while it was off.
+                state.copy(monitoringEnabled = false, lastLevel = null, lastPlugged = null)
+            }
+            prefs[KEY_MONITOR_STATE] = ThresholdCodec.encodeMonitorState(cleared)
         }
     }
 }

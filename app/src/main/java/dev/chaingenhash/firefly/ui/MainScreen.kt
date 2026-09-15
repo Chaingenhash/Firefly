@@ -1,8 +1,10 @@
 package dev.chaingenhash.firefly.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,17 +28,20 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -45,6 +50,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.chaingenhash.firefly.domain.Direction
 import dev.chaingenhash.firefly.domain.Threshold
+import dev.chaingenhash.firefly.service.BatteryMonitorService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,13 +62,13 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
 
     var editing by remember { mutableStateOf<Threshold?>(null) }
     var sheetOpen by remember { mutableStateOf(false) }
+
+    // NotificationManagerCompat.areNotificationsEnabled() reflects whether the user can
+    // actually see a notification; checkSelfPermission(POST_NOTIFICATIONS) is always
+    // PERMISSION_GRANTED on API 31-32 (the permission didn't exist yet), which would hide
+    // this warning from anyone who disabled notifications there.
     var notificationsGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.POST_NOTIFICATIONS,
-                ) == PackageManager.PERMISSION_GRANTED,
-        )
+        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
     }
 
     val requestPermission = rememberLauncherForActivityResult(
@@ -72,15 +78,19 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         if (granted) viewModel.setMonitoring(true)
     }
 
+    val currentMonitoring = rememberUpdatedState(monitoring)
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                notificationsGranted =
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                        ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.POST_NOTIFICATIONS,
-                        ) == PackageManager.PERMISSION_GRANTED
+                notificationsGranted = NotificationManagerCompat.from(context)
+                    .areNotificationsEnabled()
+
+                // The service can die without stopService — a battery killer, a
+                // force-stop, a restore onto a new device. onStartCommand is idempotent,
+                // so re-starting it here is a no-op when it is already alive.
+                if (currentMonitoring.value) BatteryMonitorService.start(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -120,7 +130,16 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                     Switch(
                         checked = monitoring,
                         onCheckedChange = { wanted ->
-                            if (wanted && !notificationsGranted) {
+                            // Below API 33 there is no runtime permission to request —
+                            // checkSelfPermission is always granted there — so a request
+                            // is only ever worth launching on 33+ while it is un-granted.
+                            val requestWorthwhile = Build.VERSION.SDK_INT >=
+                                Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.POST_NOTIFICATIONS,
+                                ) != PackageManager.PERMISSION_GRANTED
+
+                            if (wanted && !notificationsGranted && requestWorthwhile) {
                                 requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
                                 viewModel.setMonitoring(wanted)
@@ -131,13 +150,22 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             }
 
             if (!notificationsGranted) {
-                Text(
-                    text = "Notifications are blocked, so alerts cannot be shown. " +
-                        "Grant the notification permission in system settings.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                TextButton(
+                    onClick = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+                        )
+                    },
                     modifier = Modifier.padding(horizontal = 16.dp),
-                )
+                ) {
+                    Text(
+                        text = "Notifications are blocked, so alerts cannot be shown. " +
+                            "Grant the notification permission in system settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
 
             LazyColumn {

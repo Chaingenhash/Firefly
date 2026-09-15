@@ -26,7 +26,14 @@ esac
 
 trap restore EXIT
 
-"$ADB" shell dumpsys battery set ac "$plugged"
+if [ "$plugged" -eq 1 ]; then
+    "$ADB" shell dumpsys battery set ac 1
+else
+    # EXTRA_PLUGGED is ac|usb|wireless, and a phone attached for adb still reports
+    # usb online — `unplug` clears all three, which `set ac 0` does not.
+    "$ADB" shell dumpsys battery unplug
+fi
+
 for level in $levels; do
     echo "level ${level}%"
     "$ADB" shell dumpsys battery set level "$level"

@@ -8,22 +8,23 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.BatteryManager
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dev.chaingenhash.firefly.data.ThresholdRepository
 import dev.chaingenhash.firefly.domain.BatteryState
-import dev.chaingenhash.firefly.domain.ThresholdEvaluator
 import dev.chaingenhash.firefly.domain.batteryStateFrom
 import dev.chaingenhash.firefly.notify.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+private const val TAG = "Firefly"
 
 /**
  * Listens to `ACTION_BATTERY_CHANGED` for as long as monitoring is on.
@@ -67,6 +68,7 @@ class BatteryMonitorService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
         runCatching { unregisterReceiver(receiver) }   // no-op unless already registered
+            .onFailure { Log.w(TAG, "unregisterReceiver before start failed", it) }
         ContextCompat.registerReceiver(
             this,
             receiver,
@@ -77,17 +79,18 @@ class BatteryMonitorService : Service() {
     }
 
     private suspend fun handle(state: BatteryState) {
-        val thresholds = repository.thresholds.first()
-        val monitorState = repository.monitorState.first()
+        // Evaluating and persisting in one transaction keeps a concurrent UI write —
+        // switching monitoring off, adding a threshold — from being overwritten. The
+        // cost is that alerts are posted after the commit rather than before, so a
+        // process death in that window loses an alert rather than repeating one. The
+        // overwrite races happen on ordinary taps; this window needs a crash between
+        // two adjacent statements.
+        val fired = repository.evaluateAndCommit(state)
 
-        val evaluation = ThresholdEvaluator.evaluate(monitorState, state, thresholds)
-
-        // Alerts are posted before the state is persisted: a crash in between costs a
-        // duplicate alert on the next crossing, where the reverse order would lose the
-        // alert entirely. applicationContext outlives this service, so a post that races
-        // onDestroy still lands.
-        evaluation.fired.forEach { Notifications.alert(applicationContext, it, state.level) }
-        repository.saveMonitorState(evaluation.state)
+        if (fired.isNotEmpty()) {
+            Log.d(TAG, "Fired: ${fired.map { it.id to it.level }}")
+        }
+        fired.forEach { Notifications.alert(applicationContext, it, state.level) }
 
         // ACTION_BATTERY_CHANGED fires far more often than the level changes.
         if (state != shown) {
@@ -101,6 +104,7 @@ class BatteryMonitorService : Service() {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(receiver) }
+            .onFailure { Log.w(TAG, "unregisterReceiver on destroy failed", it) }
         scope.cancel()
         super.onDestroy()
     }
