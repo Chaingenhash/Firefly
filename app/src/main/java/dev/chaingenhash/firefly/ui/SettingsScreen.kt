@@ -216,7 +216,11 @@ private fun ToggleRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.padding(end = 16.dp)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+        ) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(
                 subtitle,
