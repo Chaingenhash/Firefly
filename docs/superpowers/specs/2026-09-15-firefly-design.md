@@ -53,7 +53,7 @@ ACTION_BATTERY_CHANGED
       -> BatteryState(level, plugged)
           -> ThresholdEvaluator(prevState, newState, thresholds, armedIds)
               -> firedThresholds  -> Notifications.alert(...)
-              -> newArmedIds      -> ThresholdRepository.saveMonitorState(...)
+              -> newArmedIds      -> persisted in the same transaction
           -> Notifications.updateStatus(...)   [only when level or plugged changed]
 ```
 

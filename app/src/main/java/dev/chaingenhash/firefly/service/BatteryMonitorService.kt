@@ -42,6 +42,9 @@ class BatteryMonitorService : Service() {
     @Volatile
     private var shown: BatteryState? = null
 
+    /** Whether [receiver] is currently registered. Touched only on the main thread. */
+    private var receiverRegistered = false
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val state = batteryStateFrom(
@@ -67,14 +70,17 @@ class BatteryMonitorService : Service() {
             Notifications.buildStatus(this, shown),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
         )
-        runCatching { unregisterReceiver(receiver) }   // no-op unless already registered
-            .onFailure { Log.w(TAG, "unregisterReceiver before start failed", it) }
+        // A redelivered start must not double-register. Tracking registration beats
+        // catching the failure: the first start always "fails" to unregister, and
+        // logging that stack trace every time buries the failures worth seeing.
+        unregisterReceiverIfNeeded()
         ContextCompat.registerReceiver(
             this,
             receiver,
             IntentFilter(Intent.ACTION_BATTERY_CHANGED),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        receiverRegistered = true
         return START_STICKY
     }
 
@@ -103,10 +109,16 @@ class BatteryMonitorService : Service() {
     }
 
     override fun onDestroy() {
-        runCatching { unregisterReceiver(receiver) }
-            .onFailure { Log.w(TAG, "unregisterReceiver on destroy failed", it) }
+        unregisterReceiverIfNeeded()
         scope.cancel()
         super.onDestroy()
+    }
+
+    private fun unregisterReceiverIfNeeded() {
+        if (!receiverRegistered) return
+        receiverRegistered = false
+        runCatching { unregisterReceiver(receiver) }
+            .onFailure { Log.w(TAG, "unregisterReceiver failed", it) }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
