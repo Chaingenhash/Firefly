@@ -33,6 +33,13 @@ android {
                 storePassword = signingProps.getProperty("storePassword")
                 keyAlias = signingProps.getProperty("keyAlias")
                 keyPassword = signingProps.getProperty("keyPassword")
+
+                // v3 carries the proof-of-rotation block, so the signing key can be
+                // rotated later without stranding existing installs. v1 is JAR signing
+                // for API < 24, which minSdk 31 puts out of reach.
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
