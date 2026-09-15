@@ -38,6 +38,7 @@ class BatteryMonitorService : Service() {
     private lateinit var repository: ThresholdRepository
 
     /** Last reading posted to the status notification, to avoid redundant re-posts. */
+    @Volatile
     private var shown: BatteryState? = null
 
     private val receiver = object : BroadcastReceiver() {
@@ -80,16 +81,20 @@ class BatteryMonitorService : Service() {
         val monitorState = repository.monitorState.first()
 
         val evaluation = ThresholdEvaluator.evaluate(monitorState, state, thresholds)
-        repository.saveMonitorState(evaluation.state)
 
-        evaluation.fired.forEach { Notifications.alert(this, it, state.level) }
+        // Alerts are posted before the state is persisted: a crash in between costs a
+        // duplicate alert on the next crossing, where the reverse order would lose the
+        // alert entirely. applicationContext outlives this service, so a post that races
+        // onDestroy still lands.
+        evaluation.fired.forEach { Notifications.alert(applicationContext, it, state.level) }
+        repository.saveMonitorState(evaluation.state)
 
         // ACTION_BATTERY_CHANGED fires far more often than the level changes.
         if (state != shown) {
             shown = state
-            NotificationManagerCompat.from(this).notify(
+            NotificationManagerCompat.from(applicationContext).notify(
                 Notifications.STATUS_NOTIFICATION_ID,
-                Notifications.buildStatus(this, state),
+                Notifications.buildStatus(applicationContext, state),
             )
         }
     }
