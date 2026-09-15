@@ -29,6 +29,18 @@ fun statusText(state: BatteryState?): String = when {
     else -> "${state.level}% · On battery"
 }
 
+/**
+ * Displaces a notification id that would collide with the ongoing status notification.
+ * An alert must never post under [Notifications.STATUS_NOTIFICATION_ID], or it would
+ * replace the status notification in the shade instead of appearing beside it.
+ */
+fun displaceFromStatusId(hash: Int): Int =
+    if (hash == Notifications.STATUS_NOTIFICATION_ID) hash + 1 else hash
+
+/** Notification id for [threshold]'s alerts. Never [Notifications.STATUS_NOTIFICATION_ID]. */
+fun alertNotificationId(threshold: Threshold): Int =
+    displaceFromStatusId(threshold.id.hashCode())
+
 object Notifications {
 
     const val CHANNEL_STATUS = "status"
@@ -85,7 +97,7 @@ object Notifications {
             .setContentIntent(openApp(context))
             .build()
 
-        manager.notify(threshold.id.hashCode(), notification)
+        manager.notify(alertNotificationId(threshold), notification)
     }
 
     private fun openApp(context: Context): PendingIntent =
