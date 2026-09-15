@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Firefly</string>
+    <string name="channel_status_name">Battery status</string>
+    <string name="channel_status_description">The ongoing notification showing the current battery level.</string>
+    <string name="channel_alerts_name">Threshold alerts</string>
+    <string name="channel_alerts_description">Alerts raised when the battery crosses one of your thresholds.</string>
+    <string name="status_title">Firefly</string>
 </resources>
