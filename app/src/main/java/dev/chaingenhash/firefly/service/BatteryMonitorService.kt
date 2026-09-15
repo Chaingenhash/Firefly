@@ -53,6 +53,12 @@ class BatteryMonitorService : Service() {
                 plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0),
             ) ?: return
 
+            // ACTION_BATTERY_CHANGED also fires on temperature and voltage changes,
+            // many times a minute while charging. Those carry the same level and plug
+            // state and can decide nothing, so they are dropped here rather than waking
+            // a coroutine and taking the store lock to reach the same conclusion.
+            if (state == shown) return
+
             scope.launch { mutex.withLock { handle(state) } }
         }
     }
@@ -85,6 +91,11 @@ class BatteryMonitorService : Service() {
     }
 
     private suspend fun handle(state: BatteryState) {
+        // `shown` is also the receiver's filter, so it is set here rather than only when
+        // the notification is re-posted: a reading that reaches this point has been
+        // acted on, whether or not it changed what is on screen.
+        shown = state
+
         // Evaluating and persisting in one transaction keeps a concurrent UI write —
         // switching monitoring off, adding a threshold — from being overwritten. The
         // cost is that alerts are posted after the commit rather than before, so a
@@ -98,14 +109,10 @@ class BatteryMonitorService : Service() {
         }
         fired.forEach { Notifications.alert(applicationContext, it, state.level) }
 
-        // ACTION_BATTERY_CHANGED fires far more often than the level changes.
-        if (state != shown) {
-            shown = state
-            NotificationManagerCompat.from(applicationContext).notify(
-                Notifications.STATUS_NOTIFICATION_ID,
-                Notifications.buildStatus(applicationContext, state),
-            )
-        }
+        NotificationManagerCompat.from(applicationContext).notify(
+            Notifications.STATUS_NOTIFICATION_ID,
+            Notifications.buildStatus(applicationContext, state),
+        )
     }
 
     override fun onDestroy() {
