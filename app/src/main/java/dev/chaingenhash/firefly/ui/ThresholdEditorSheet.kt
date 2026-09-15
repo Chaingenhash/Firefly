@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -20,6 +22,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SingleChoiceSegmentedButtonRowScope
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -31,11 +34,43 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.chaingenhash.firefly.domain.Direction
 import dev.chaingenhash.firefly.domain.Threshold
 import kotlin.math.roundToInt
+
+/**
+ * One segment of the direction picker.
+ *
+ * The icon and label go in a Row inside the label slot: SegmentedButton's label slot is
+ * not a RowScope, so an icon and a text placed in it directly draw on top of each other.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SingleChoiceSegmentedButtonRowScope.DirectionSegment(
+    selected: Boolean,
+    onClick: () -> Unit,
+    shape: Shape,
+    icon: ImageVector,
+    text: String,
+) {
+    SegmentedButton(
+        selected = selected,
+        onClick = onClick,
+        shape = shape,
+        icon = {},
+        label = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(text)
+            }
+        },
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,30 +117,25 @@ fun ThresholdEditorSheet(
                 value = level.toFloat(),
                 onValueChange = { level = it.roundToInt() },
                 valueRange = 1f..100f,
-                steps = 98,
             )
 
             Spacer(Modifier.height(16.dp))
 
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(
+                DirectionSegment(
                     selected = direction == Direction.CHARGING_UP,
                     onClick = { direction = Direction.CHARGING_UP },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    icon = {},
-                ) {
-                    Icon(Icons.Default.ArrowUpward, contentDescription = null, Modifier.height(18.dp))
-                    Text(" While charging")
-                }
-                SegmentedButton(
+                    icon = Icons.Default.ArrowUpward,
+                    text = "While charging",
+                )
+                DirectionSegment(
                     selected = direction == Direction.DISCHARGING_DOWN,
                     onClick = { direction = Direction.DISCHARGING_DOWN },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    icon = {},
-                ) {
-                    Icon(Icons.Default.ArrowDownward, contentDescription = null, Modifier.height(18.dp))
-                    Text(" While draining")
-                }
+                    icon = Icons.Default.ArrowDownward,
+                    text = "While draining",
+                )
             }
 
             Spacer(Modifier.height(8.dp))
