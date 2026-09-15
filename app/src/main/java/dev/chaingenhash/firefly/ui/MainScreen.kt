@@ -18,8 +18,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -30,6 +34,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -49,6 +54,26 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.chaingenhash.firefly.domain.BatteryState
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import dev.chaingenhash.firefly.ui.theme.glowAccent
 import dev.chaingenhash.firefly.domain.Direction
 import dev.chaingenhash.firefly.domain.Threshold
 import dev.chaingenhash.firefly.service.BatteryMonitorService
@@ -108,110 +133,103 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
         }
     }
 
+    var pendingDelete by remember { mutableStateOf<Threshold?>(null) }
+    val accent = glowAccent
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Firefly") }) },
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Firefly", fontWeight = FontWeight.SemiBold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = { editing = null; sheetOpen = true }) {
+            FloatingActionButton(
+                onClick = { editing = null; sheetOpen = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
                 Icon(Icons.Default.Add, contentDescription = "Add threshold")
             }
         },
     ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize()) {
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxSize(),
+        ) {
+            BatteryCard(
+                battery = battery,
+                monitoring = monitoring,
+                accent = accent,
+                onMonitoringChange = { wanted ->
+                    // Below API 33 there is no runtime permission to request —
+                    // checkSelfPermission is always granted there — so a request
+                    // is only ever worth launching on 33+ while it is un-granted.
+                    val requestWorthwhile = Build.VERSION.SDK_INT >=
+                        Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.POST_NOTIFICATIONS,
+                        ) != PackageManager.PERMISSION_GRANTED
 
-            Card(Modifier.padding(16.dp).fillMaxWidth()) {
-                Row(
-                    Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column {
-                        Text(
-                            text = battery?.let { "${it.level}%" } ?: "—",
-                            style = MaterialTheme.typography.headlineMedium,
-                        )
-                        Text(
-                            text = when {
-                                battery == null -> "Reading battery…"
-                                battery!!.plugged -> "Charging"
-                                else -> "On battery"
-                            },
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                    if (wanted && !notificationsGranted && requestWorthwhile) {
+                        requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        viewModel.setMonitoring(wanted)
                     }
-                    Switch(
-                        checked = monitoring,
-                        onCheckedChange = { wanted ->
-                            // Below API 33 there is no runtime permission to request —
-                            // checkSelfPermission is always granted there — so a request
-                            // is only ever worth launching on 33+ while it is un-granted.
-                            val requestWorthwhile = Build.VERSION.SDK_INT >=
-                                Build.VERSION_CODES.TIRAMISU &&
-                                ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.POST_NOTIFICATIONS,
-                                ) != PackageManager.PERMISSION_GRANTED
-
-                            if (wanted && !notificationsGranted && requestWorthwhile) {
-                                requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                viewModel.setMonitoring(wanted)
-                            }
-                        },
-                    )
-                }
-            }
+                },
+            )
 
             if (!notificationsGranted) {
-                TextButton(
-                    onClick = {
+                NotificationsBlockedNotice(
+                    onOpenSettings = {
                         context.startActivity(
                             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
                         )
                     },
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                ) {
-                    Text(
-                        text = "Notifications are blocked, so alerts cannot be shown. " +
-                            "Grant the notification permission in system settings.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
+                )
             }
 
-            LazyColumn {
-                items(thresholds, key = { it.id }) { threshold ->
-                    Row(
-                        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(
-                            Modifier.weight(1f).clickable {
-                                editing = threshold
-                                sheetOpen = true
-                            },
-                        ) {
-                            Text("${threshold.level}%", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = threshold.label ?: when (threshold.direction) {
-                                    Direction.CHARGING_UP -> "While charging"
-                                    Direction.DISCHARGING_DOWN -> "While draining"
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Switch(
-                            checked = threshold.enabled,
-                            onCheckedChange = { viewModel.setEnabled(threshold.id, it) },
+            if (thresholds.isEmpty()) {
+                EmptyThresholds(onAdd = { editing = null; sheetOpen = true })
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 4.dp,
+                        // Clear the FAB so the last row is never stranded underneath it.
+                        bottom = 96.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(thresholds, key = { it.id }) { threshold ->
+                        ThresholdRow(
+                            threshold = threshold,
+                            accent = accent,
+                            onClick = { editing = threshold; sheetOpen = true },
+                            onToggle = { viewModel.setEnabled(threshold.id, it) },
+                            onDelete = { pendingDelete = threshold },
                         )
-                        IconButton(onClick = { viewModel.delete(threshold.id) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                        }
                     }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { target ->
+        DeleteConfirmation(
+            threshold = target,
+            onConfirm = {
+                viewModel.delete(target.id)
+                pendingDelete = null
+            },
+            onDismiss = { pendingDelete = null },
+        )
     }
 
     if (sheetOpen) {
@@ -221,4 +239,241 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             onSave = viewModel::save,
         )
     }
+}
+
+@Composable
+private fun BatteryCard(
+    battery: BatteryState?,
+    monitoring: Boolean,
+    accent: Color,
+    onMonitoringChange: (Boolean) -> Unit,
+) {
+    Card(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = battery?.let { "${it.level}%" } ?: "—",
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = when {
+                            battery == null -> "Reading battery…"
+                            battery.plugged -> "Charging"
+                            else -> "On battery"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Switch(
+                        checked = monitoring,
+                        onCheckedChange = onMonitoringChange,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (monitoring) "Monitoring" else "Paused",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (monitoring) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.outline
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+
+            BatteryGauge(
+                level = battery?.level ?: 0,
+                plugged = battery?.plugged == true,
+                accent = accent,
+                track = MaterialTheme.colorScheme.surfaceContainerHigh,
+                outline = MaterialTheme.colorScheme.outlineVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThresholdRow(
+    threshold: Threshold,
+    accent: Color,
+    onClick: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+    onDelete: () -> Unit,
+) {
+    val charging = threshold.direction == Direction.CHARGING_UP
+    // Direction is carried by an icon AND by the caption text, so it never depends on
+    // colour alone.
+    val directionLabel = if (charging) "While charging" else "While draining"
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (threshold.enabled) {
+                            accent.copy(alpha = 0.16f)
+                        } else {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = if (charging) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                    contentDescription = null,
+                    tint = if (threshold.enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+
+            Spacer(Modifier.width(14.dp))
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "${threshold.level}%",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (threshold.enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.outline
+                    },
+                )
+                Text(
+                    text = threshold.label ?: directionLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            Switch(
+                checked = threshold.enabled,
+                onCheckedChange = onToggle,
+            )
+
+            IconButton(onClick = onDelete) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete threshold at ${threshold.level} percent",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyThresholds(onAdd: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = "No thresholds yet",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Add a level to be alerted at — 80% while charging to unplug, " +
+                "or 20% while draining to find a charger.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = onAdd) { Text("Add a threshold") }
+    }
+}
+
+@Composable
+private fun NotificationsBlockedNotice(onOpenSettings: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp)) {
+            Text(
+                text = "Notifications are blocked, so alerts cannot be shown.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            TextButton(
+                onClick = onOpenSettings,
+                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+            ) {
+                Text("Open notification settings")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteConfirmation(
+    threshold: Threshold,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete this threshold?") },
+        text = {
+            Text(
+                "The ${threshold.level}% alert " +
+                    if (threshold.direction == Direction.CHARGING_UP) {
+                        "while charging will be removed."
+                    } else {
+                        "while draining will be removed."
+                    },
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Delete", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
