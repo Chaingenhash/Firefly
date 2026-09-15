@@ -9,10 +9,9 @@ restore() {
     echo "Restoring real battery reporting"
     "$ADB" shell dumpsys battery reset
 }
-trap restore EXIT
 
 usage() {
-    echo "Usage: $0 charge|drain" >&2
+    echo "Usage: $0 charge|drain|hover" >&2
     exit 1
 }
 
@@ -21,8 +20,11 @@ usage() {
 case "$1" in
     charge) levels=$(seq 70 1 90); plugged=1 ;;
     drain)  levels=$(seq 30 -1 10); plugged=0 ;;
+    hover)  levels="80 79 80 79 80"; plugged=1 ;;
     *) usage ;;
 esac
+
+trap restore EXIT
 
 "$ADB" shell dumpsys battery set ac "$plugged"
 for level in $levels; do

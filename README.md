@@ -28,11 +28,26 @@ the suite runs on the JVM in seconds. The suite currently has 27 tests (15 evalu
 
 ## Testing thresholds without a charge cycle
 
-    ./scripts/simulate-battery.sh charge
-    ./scripts/simulate-battery.sh drain
+    ./scripts/simulate-battery.sh charge   # climbs 70 -> 90, crossing a threshold at 80
+    ./scripts/simulate-battery.sh drain    # falls 30 -> 10, crossing a threshold at 20
+    ./scripts/simulate-battery.sh hover    # wobbles across 80 without rearming
 
 The script drives the level through `adb shell dumpsys battery` and always restores real
 battery reporting when it exits.
+
+If `adb` is not on your PATH, point the script at it:
+
+    ADB=~/Android/Sdk/platform-tools/adb ./scripts/simulate-battery.sh charge
+
+`charge` and `drain` each cross their threshold once, so each should produce exactly one
+alert. Re-running either one also produces an alert, because the script restores real
+reporting on exit and starts the next run well below the threshold — that is a genuine new
+crossing, not a repeat. `hover` is the one that tests the hysteresis rule: it crosses 80
+three times without ever dropping to the rearm floor, so a correct build alerts once for
+the whole run.
+
+If the device disconnects mid-run, the script cannot restore real reporting. Run
+`adb shell dumpsys battery reset` once it is back.
 
 ## How it works
 
